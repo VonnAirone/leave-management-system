@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useAuthContext } from '../../lib/AuthContext';
 import type { Profile, LeaveApplication } from '../../types/database';
 import { X, UserPlus, Users, Pencil, Plus, Trash2, Eye, FileDown } from 'lucide-react';
 import { DepartmentFilter } from '../../components/shared/DepartmentFilter';
@@ -31,6 +32,7 @@ const emptyBatchRow = (): BatchRow => ({
 });
 
 export function EmployeesPage() {
+  const { profile: currentUser } = useAuthContext();
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -154,6 +156,31 @@ export function EmployeesPage() {
       if (updateError) {
         setError(updateError.message);
       } else {
+        // Find the original employee to detect changes
+        const original = employees.find((e) => e.id === editingId);
+        const changes: string[] = [];
+        if (original) {
+          if (original.first_name !== firstName) changes.push('first_name');
+          if ((original.middle_name ?? '') !== middleName) changes.push('middle_name');
+          if (original.last_name !== lastName) changes.push('last_name');
+          if (original.office_department !== office) changes.push('office_department');
+          if (original.position_title !== position) changes.push('position_title');
+          if ((original.salary_grade ?? '') !== salaryGrade) changes.push('salary_grade');
+          if ((original.service_start_date ?? '') !== serviceStartDate) changes.push('service_start_date');
+        }
+        if (currentUser) {
+          await supabase.from('audit_logs').insert({
+            action: 'employee_updated',
+            entity_type: 'profile',
+            entity_id: editingId,
+            performed_by: currentUser.id,
+            details: {
+              employee_name: `${lastName}, ${firstName}`,
+              department: office,
+              changes,
+            },
+          });
+        }
         setShowModal(false);
         resetForm();
         fetchEmployees();
@@ -191,6 +218,20 @@ export function EmployeesPage() {
           })
           .eq('id', authData.user.id);
 
+        if (currentUser) {
+          await supabase.from('audit_logs').insert({
+            action: 'employee_created',
+            entity_type: 'profile',
+            entity_id: authData.user.id,
+            performed_by: currentUser.id,
+            details: {
+              employee_name: `${lastName}, ${firstName}`,
+              email,
+              department: office,
+              position,
+            },
+          });
+        }
         setShowModal(false);
         resetForm();
         fetchEmployees();
@@ -797,7 +838,7 @@ export function EmployeesPage() {
       {/* View Employee Modal */}
       {viewEmployee && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col">
+          <div className="bg-white shadow-xl w-full max-w-3xl mx-4 max-h-[90vh] rounded-lg flex flex-col overflow-hidden">
             <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
               <h2 className="text-lg font-semibold text-gray-900">Employee Details</h2>
               <button onClick={() => setViewEmployee(null)} className="text-gray-400 hover:text-gray-600">
@@ -843,7 +884,7 @@ export function EmployeesPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 border-b">
                     <tr>
-                      <th className="text-left px-3 py-2 text-gray-500 font-medium">App #</th>
+                      <th className="text-left px-3 py-2 text-gray-500 font-medium">Application No</th>
                       <th className="text-left px-3 py-2 text-gray-500 font-medium">Leave Type</th>
                       <th className="text-left px-3 py-2 text-gray-500 font-medium">Dates</th>
                       <th className="text-center px-3 py-2 text-gray-500 font-medium">Days</th>

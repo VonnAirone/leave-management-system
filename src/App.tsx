@@ -9,6 +9,7 @@ import { HRDashboardPage } from './pages/hr/HRDashboardPage';
 import { HRApplicationsPage } from './pages/hr/HRApplicationsPage';
 import { EmployeesPage } from './pages/hr/EmployeesPage';
 import { CreditsPage } from './pages/hr/CreditsPage';
+import { AuditLogPage } from './pages/hr/AuditLogPage';
 import type { ReactNode } from 'react';
 
 function ProtectedRoute({ children, requiredRole }: { children: ReactNode; requiredRole?: string }) {
@@ -70,6 +71,7 @@ function AppRoutes() {
         <Route path="/hr/applications" element={<HRApplicationsPage />} />
         <Route path="/hr/employees" element={<EmployeesPage />} />
         <Route path="/hr/credits" element={<CreditsPage />} />
+        <Route path="/hr/activity-log" element={<AuditLogPage />} />
       </Route>
 
       {/* Default redirect */}

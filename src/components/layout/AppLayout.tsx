@@ -7,6 +7,7 @@ import {
   Users,
   CreditCard,
   ClipboardList,
+  ScrollText,
   LogOut,
   Menu,
   X,
@@ -72,6 +73,10 @@ export function AppLayout() {
                   <NavLink to="/hr/credits" className={navLinkClass} onClick={() => setSidebarOpen(false)}>
                     <CreditCard size={18} />
                     Leave Credits
+                  </NavLink>
+                  <NavLink to="/hr/activity-log" className={navLinkClass} onClick={() => setSidebarOpen(false)}>
+                    <ScrollText size={18} />
+                    Activity Log
                   </NavLink>
                 </>
               ) : (

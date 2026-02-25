@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useAuthContext } from '../../lib/AuthContext';
 import type { Profile, LeaveType, LeaveCredit } from '../../types/database';
 import { X, Plus } from 'lucide-react';
 import { DepartmentFilter } from '../../components/shared/DepartmentFilter';
@@ -19,6 +20,7 @@ interface GroupedCredits {
 }
 
 export function CreditsPage() {
+  const { profile: currentUser } = useAuthContext();
   const [groupedCredits, setGroupedCredits] = useState<GroupedCredits[]>([]);
   const [employees, setEmployees] = useState<Profile[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>([]);
@@ -145,6 +147,25 @@ export function CreditsPage() {
         },
         { onConflict: 'employee_id,leave_type_id,year' }
       );
+    }
+
+    // Audit log
+    if (currentUser) {
+      const emp = editingCredit?.employee ?? employees.find((e) => e.id === selectedEmployee);
+      const lt = editingCredit?.leave_type ?? leaveTypes.find((l) => l.id === parseInt(selectedLeaveType));
+      await supabase.from('audit_logs').insert({
+        action: 'credits_adjusted',
+        entity_type: 'leave_credit',
+        entity_id: editingId ?? `${selectedEmployee}-${selectedLeaveType}-${year}`,
+        performed_by: currentUser.id,
+        details: {
+          employee_name: emp ? `${emp.last_name}, ${emp.first_name}` : selectedEmployee,
+          leave_type: lt?.name ?? selectedLeaveType,
+          adjustment: amount,
+          year,
+          reason: adjustmentReason || null,
+        },
+      });
     }
 
     setShowModal(false);

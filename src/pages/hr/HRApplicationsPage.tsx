@@ -114,6 +114,24 @@ export function HRApplicationsPage() {
         }
       }
 
+      // Audit log
+      await supabase.from('audit_logs').insert({
+        action: action === 'approve' ? 'leave_approved' : 'leave_rejected',
+        entity_type: 'leave_application',
+        entity_id: selectedApp.id,
+        performed_by: profile.id,
+        details: {
+          application_number: selectedApp.application_number,
+          employee_name: selectedApp.employee_name,
+          leave_type: selectedApp.leave_type?.name,
+          dates: `${selectedApp.inclusive_date_start} — ${selectedApp.inclusive_date_end}`,
+          num_working_days: selectedApp.num_working_days,
+          ...(action === 'approve'
+            ? { days_with_pay: parseFloat(daysWithPay) || selectedApp.num_working_days, days_without_pay: parseFloat(daysWithoutPay) || 0 }
+            : { reason: remarks }),
+        },
+      });
+
       setSelectedApp(null);
       setAction(null);
       setRemarks('');
