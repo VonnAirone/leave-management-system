@@ -113,7 +113,7 @@ export function HRApplicationsPage() {
     let creditPromise: Promise<unknown> = Promise.resolve();
     if (action === 'approve') {
       const year = new Date(selectedApp.inclusive_date_start).getFullYear();
-      creditPromise = supabase
+      creditPromise = Promise.resolve(supabase
         .from('leave_credits')
         .select('id, total_used')
         .eq('employee_id', selectedApp.employee_id)
@@ -127,7 +127,7 @@ export function HRApplicationsPage() {
               .update({ total_used: credit.total_used + selectedApp.num_working_days })
               .eq('id', credit.id);
           }
-        });
+        }));
     }
 
     // Run all three operations concurrently
