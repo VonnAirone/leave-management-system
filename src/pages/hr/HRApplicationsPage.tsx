@@ -50,12 +50,11 @@ export function HRApplicationsPage() {
 
   const fetchDepartments = async () => {
     const { data } = await supabase
-      .from('profiles')
-      .select('office_department')
-      .not('office_department', 'is', null)
-      .order('office_department');
-    const unique = [...new Set((data ?? []).map(d => d.office_department).filter(Boolean))] as string[];
-    setDepartments(unique);
+      .from('offices')
+      .select('name')
+      .eq('is_active', true)
+      .order('name');
+    setDepartments((data ?? []).map(d => d.name));
   };
 
   useEffect(() => {
@@ -87,51 +86,56 @@ export function HRApplicationsPage() {
       updates.recommendation_disapproval_reason = remarks;
     }
 
-    const { error } = await supabase
+    // Build all promises to run concurrently: update application + deduct credits + audit log
+    const updateAppPromise = supabase
       .from('leave_applications')
       .update(updates)
       .eq('id', selectedApp.id);
 
-    if (error) {
-      alert('Error: ' + error.message);
+    const auditPromise = supabase.from('audit_logs').insert({
+      action: action === 'approve' ? 'leave_approved' : 'leave_rejected',
+      entity_type: 'leave_application',
+      entity_id: selectedApp.id,
+      performed_by: profile.id,
+      details: {
+        application_number: selectedApp.application_number,
+        employee_name: selectedApp.employee_name,
+        leave_type: selectedApp.leave_type?.name,
+        dates: `${selectedApp.inclusive_date_start} — ${selectedApp.inclusive_date_end}`,
+        num_working_days: selectedApp.num_working_days,
+        ...(action === 'approve'
+          ? { days_with_pay: parseFloat(daysWithPay) || selectedApp.num_working_days, days_without_pay: parseFloat(daysWithoutPay) || 0 }
+          : { reason: remarks }),
+      },
+    });
+
+    // Deduct credits on approval (must fetch first, then update)
+    let creditPromise: Promise<unknown> = Promise.resolve();
+    if (action === 'approve') {
+      const year = new Date(selectedApp.inclusive_date_start).getFullYear();
+      creditPromise = supabase
+        .from('leave_credits')
+        .select('id, total_used')
+        .eq('employee_id', selectedApp.employee_id)
+        .eq('leave_type_id', selectedApp.leave_type_id)
+        .eq('year', year)
+        .single()
+        .then(({ data: credit }) => {
+          if (credit) {
+            return supabase
+              .from('leave_credits')
+              .update({ total_used: credit.total_used + selectedApp.num_working_days })
+              .eq('id', credit.id);
+          }
+        });
+    }
+
+    // Run all three operations concurrently
+    const [appResult] = await Promise.all([updateAppPromise, auditPromise, creditPromise]);
+
+    if (appResult.error) {
+      alert('Error: ' + appResult.error.message);
     } else {
-      // Deduct credits on approval
-      if (action === 'approve') {
-        const year = new Date(selectedApp.inclusive_date_start).getFullYear();
-        const { data: credit } = await supabase
-          .from('leave_credits')
-          .select('*')
-          .eq('employee_id', selectedApp.employee_id)
-          .eq('leave_type_id', selectedApp.leave_type_id)
-          .eq('year', year)
-          .single();
-
-        if (credit) {
-          await supabase
-            .from('leave_credits')
-            .update({ total_used: credit.total_used + selectedApp.num_working_days })
-            .eq('id', credit.id);
-        }
-      }
-
-      // Audit log
-      await supabase.from('audit_logs').insert({
-        action: action === 'approve' ? 'leave_approved' : 'leave_rejected',
-        entity_type: 'leave_application',
-        entity_id: selectedApp.id,
-        performed_by: profile.id,
-        details: {
-          application_number: selectedApp.application_number,
-          employee_name: selectedApp.employee_name,
-          leave_type: selectedApp.leave_type?.name,
-          dates: `${selectedApp.inclusive_date_start} — ${selectedApp.inclusive_date_end}`,
-          num_working_days: selectedApp.num_working_days,
-          ...(action === 'approve'
-            ? { days_with_pay: parseFloat(daysWithPay) || selectedApp.num_working_days, days_without_pay: parseFloat(daysWithoutPay) || 0 }
-            : { reason: remarks }),
-        },
-      });
-
       setSelectedApp(null);
       setAction(null);
       setRemarks('');

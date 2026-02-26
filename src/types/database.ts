@@ -20,6 +20,11 @@ export interface Profile {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  // Normalized FK columns
+  role_id: string | null;
+  position_id: string | null;
+  office_id: string | null;
+  salary_grade_id: string | null;
 }
 
 export interface LeaveType {
@@ -40,6 +45,155 @@ export interface LeaveCredit {
   year: number;
   updated_at: string;
   leave_type?: LeaveType;
+}
+
+export type COSStatus = 'active' | 'expiring' | 'expired';
+export type COSEmploymentType = 'cos' | 'jo';
+export type COSNatureOfHiring = 'casual' | 'contractual' | 'job_order';
+export type COSFundSource = 'mooe' | 'ps' | 'project' | 'other';
+export type COSSex = 'male' | 'female';
+
+export interface COSWorker {
+  id: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  sex: COSSex | null;
+  date_of_birth: string | null;
+  address: string | null;
+  cs_eligibility: string | null;
+  highest_education: string | null;
+  position_title: string;
+  equivalent_position: string | null;
+  office_department: string;
+  actual_office_assignment: string | null;
+  employment_type: COSEmploymentType;
+  nature_of_hiring: COSNatureOfHiring;
+  monthly_rate: number | null;
+  fund_source: COSFundSource;
+  contract_start: string;
+  contract_end: string;
+  status: COSStatus;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
+  // Normalized FK columns
+  position_id: string | null;
+  office_id: string | null;
+  actual_office_id: string | null;
+  employment_type_id: string | null;
+  nature_of_hiring_id: string | null;
+  fund_source_id: string | null;
+}
+
+// Admin Reference Tables
+export interface Position {
+  id: string;
+  title: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Office {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalaryRate {
+  id: string;
+  salary_grade: string;
+  step_increment: number;
+  monthly_rate: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Normalized FK column
+  salary_grade_id: string | null;
+}
+
+export interface COSRate {
+  id: string;
+  position_title: string;
+  daily_rate: number;
+  monthly_rate: number | null;
+  employment_type: 'cos' | 'jo';
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+  // Normalized FK columns
+  position_id: string | null;
+  employment_type_id: string | null;
+}
+
+// New reference/enum tables
+export interface Role {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmploymentType {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HiringNature {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FundSource {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SalaryGrade {
+  id: string;
+  grade: string;
+  description: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface COSContract {
+  id: string;
+  worker_id: string;
+  contract_start: string;
+  contract_end: string;
+  monthly_rate: number | null;
+  fund_source_id: string | null;
+  status: string;
+  remarks: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface LeaveApplication {

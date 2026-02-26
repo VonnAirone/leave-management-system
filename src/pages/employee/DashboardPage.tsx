@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuthContext } from '../../lib/AuthContext';
 import { StatusBadge } from '../../components/shared/StatusBadge';
 import type { LeaveCredit, LeaveApplication } from '../../types/database';
-import { FilePlus, Calendar, TrendingDown } from 'lucide-react';
+import { FilePlus, Calendar, TrendingDown, ArrowLeft } from 'lucide-react';
 
 export function EmployeeDashboard() {
   const { profile } = useAuthContext();
@@ -41,15 +41,24 @@ export function EmployeeDashboard() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+      <div className="mb-6">
         <Link
-          to="/apply"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          to="/modules"
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors mb-3"
         >
-          <FilePlus size={16} />
-          Apply for Leave
+          <ArrowLeft size={16} />
+          Back to Modules
         </Link>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+          <Link
+            to="/apply"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <FilePlus size={16} />
+            Apply for Leave
+          </Link>
+        </div>
       </div>
 
       {/* Leave Credits */}

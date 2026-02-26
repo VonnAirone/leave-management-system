@@ -1,29 +1,39 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useAuthContext } from '../../lib/AuthContext';
 import { StatusBadge } from '../../components/shared/StatusBadge';
+import { Pagination } from '../../components/shared/Pagination';
 import type { LeaveApplication } from '../../types/database';
 import { FileDown } from 'lucide-react';
+
+const PAGE_SIZE = 20;
 
 export function ApplicationsPage() {
   const { profile } = useAuthContext();
   const [apps, setApps] = useState<LeaveApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
+  const [totalCount, setTotalCount] = useState(0);
 
-  useEffect(() => {
+  const fetchApps = useCallback(async () => {
     if (!profile) return;
-    supabase
+    setLoading(true);
+    const { data, count } = await supabase
       .from('leave_applications')
-      .select('*, leave_type:leave_types(*)')
+      .select('*, leave_type:leave_types(*)', { count: 'exact' })
       .eq('employee_id', profile.id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
-        setApps(data ?? []);
-        setLoading(false);
-      });
-  }, [profile]);
+      .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+    setApps(data ?? []);
+    setTotalCount(count ?? 0);
+    setLoading(false);
+  }, [profile, page]);
+
+  useEffect(() => {
+    fetchApps();
+  }, [fetchApps]);
 
   const downloadPdf = async (appId: string) => {
     setDownloading(appId);
@@ -126,6 +136,7 @@ export function ApplicationsPage() {
             </table>
           </div>
         )}
+        <Pagination page={page} totalCount={totalCount} pageSize={PAGE_SIZE} onPageChange={setPage} />
       </div>
     </div>
   );

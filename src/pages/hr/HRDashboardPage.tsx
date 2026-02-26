@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
-import { Users, ClipboardList, Clock, CheckCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Users, ClipboardList, Clock, CheckCircle, ChevronLeft, ChevronRight, ArrowLeft } from 'lucide-react';
 
 interface DepartmentCount {
   department: string;
@@ -52,7 +52,7 @@ export function HRDashboardPage() {
         .select('id', { count: 'exact', head: true })
         .eq('status', 'rejected')
         .gte('actioned_at', startOfMonth),
-      supabase.from('profiles').select('office_department').eq('role', 'employee'),
+      supabase.from('profiles_view').select('office_department').eq('role', 'employee'),
     ]).then(([empRes, pendingRes, approvedRes, rejectedRes, deptRes]) => {
       setStats({
         totalEmployees: empRes.count ?? 0,
@@ -151,7 +151,16 @@ export function HRDashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">HR Dashboard</h1>
+      <div className="mb-6">
+        <Link
+          to="/modules"
+          className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors mb-3"
+        >
+          <ArrowLeft size={16} />
+          Back to Modules
+        </Link>
+        <h1 className="text-2xl font-bold text-gray-900">HR Dashboard</h1>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card) => (
           <Link

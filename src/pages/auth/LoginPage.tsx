@@ -13,7 +13,7 @@ export function LoginPage() {
 
   // Redirect if already logged in
   if (profile) {
-    navigate(profile.role === 'hr_admin' ? '/hr/dashboard' : '/dashboard', { replace: true });
+    navigate('/modules', { replace: true });
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -36,7 +36,7 @@ export function LoginPage() {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 mb-4">
             <FileText className="text-blue-600" size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Leave Management System</h1>
+          <h1 className="text-2xl font-bold text-gray-900">HR Information System</h1>
           <p className="text-gray-500 mt-1">Sign in to your account</p>
         </div>
 

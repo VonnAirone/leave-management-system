@@ -100,13 +100,11 @@ export function CreditsPage() {
 
   const fetchDepartments = async () => {
     const { data } = await supabase
-      .from('profiles')
-      .select('office_department')
-      .eq('role', 'employee')
-      .not('office_department', 'is', null)
-      .order('office_department');
-    const unique = [...new Set((data ?? []).map(d => d.office_department).filter(Boolean))] as string[];
-    setDepartments(unique);
+      .from('offices')
+      .select('name')
+      .eq('is_active', true)
+      .order('name');
+    setDepartments((data ?? []).map(d => d.name));
   };
 
   useEffect(() => {

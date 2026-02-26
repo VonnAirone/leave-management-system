@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, type FormEvent } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuthContext } from '../../lib/AuthContext';
-import type { Profile, LeaveApplication } from '../../types/database';
+import type { Profile, LeaveApplication, Position, Office, SalaryRate, SalaryGrade, Role } from '../../types/database';
 import { X, UserPlus, Users, Pencil, Plus, Trash2, Eye, FileDown } from 'lucide-react';
 import { DepartmentFilter } from '../../components/shared/DepartmentFilter';
 import { Pagination } from '../../components/shared/Pagination';
@@ -53,11 +53,29 @@ export function EmployeesPage() {
   const [batchProgress, setBatchProgress] = useState(0);
   const [batchResult, setBatchResult] = useState<BatchResult | null>(null);
 
+  // Reference data
+  const [refPositions, setRefPositions] = useState<Position[]>([]);
+  const [refOffices, setRefOffices] = useState<Office[]>([]);
+  const [refSalaryGrades, setRefSalaryGrades] = useState<SalaryRate[]>([]);
+  const [refRoles, setRefRoles] = useState<Role[]>([]);
+  const [refSalaryGradesList, setRefSalaryGradesList] = useState<SalaryGrade[]>([]);
+
+  // Resolve FK IDs from text values using reference data
+  const resolveProfileFKs = (positionText: string, officeText: string, salaryGradeText: string, roleText: string = 'employee') => {
+    const position_id = refPositions.find(p => p.title.toLowerCase() === positionText.trim().toLowerCase())?.id ?? null;
+    const office_id = refOffices.find(o => o.name.toLowerCase() === officeText.trim().toLowerCase())?.id ?? null;
+    const salary_grade_id = refSalaryGradesList.find(sg => sg.grade === salaryGradeText.trim())?.id ?? null;
+    const role_id = refRoles.find(r => r.code === roleText)?.id ?? null;
+    return { position_id, office_id, salary_grade_id, role_id };
+  };
+
   // View employee state
   const [viewEmployee, setViewEmployee] = useState<Profile | null>(null);
   const [employeeApps, setEmployeeApps] = useState<LeaveApplication[]>([]);
   const [loadingApps, setLoadingApps] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
+  const [viewPage, setViewPage] = useState(0);
+  const [viewTotalCount, setViewTotalCount] = useState(0);
 
   // Form fields
   const [email, setEmail] = useState('');
@@ -90,16 +108,21 @@ export function EmployeesPage() {
 
   const fetchDepartments = async () => {
     const { data } = await supabase
-      .from('profiles')
-      .select('office_department')
-      .not('office_department', 'is', null)
-      .order('office_department');
-    const unique = [...new Set((data ?? []).map(d => d.office_department).filter(Boolean))] as string[];
-    setDepartments(unique);
+      .from('offices')
+      .select('name')
+      .eq('is_active', true)
+      .order('name');
+    setDepartments((data ?? []).map(d => d.name));
   };
 
   useEffect(() => {
     fetchDepartments();
+    // Fetch reference data
+    supabase.from('positions').select('*').eq('is_active', true).order('title').then(({ data }) => setRefPositions(data ?? []));
+    supabase.from('offices').select('*').eq('is_active', true).order('name').then(({ data }) => setRefOffices(data ?? []));
+    supabase.from('salary_rates').select('*').eq('is_active', true).order('salary_grade').order('step_increment').then(({ data }) => setRefSalaryGrades(data ?? []));
+    supabase.from('roles').select('*').eq('is_active', true).then(({ data }) => setRefRoles(data ?? []));
+    supabase.from('salary_grades').select('*').eq('is_active', true).then(({ data }) => setRefSalaryGradesList(data ?? []));
   }, []);
 
   useEffect(() => {
@@ -140,6 +163,7 @@ export function EmployeesPage() {
 
     if (editingId) {
       // Update existing
+      const fks = resolveProfileFKs(position, office, salaryGrade || '');
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
@@ -150,6 +174,9 @@ export function EmployeesPage() {
           position_title: position,
           salary_grade: salaryGrade || null,
           service_start_date: serviceStartDate || null,
+          position_id: fks.position_id,
+          office_id: fks.office_id,
+          salary_grade_id: fks.salary_grade_id,
         })
         .eq('id', editingId);
 
@@ -204,6 +231,7 @@ export function EmployeesPage() {
       } else if (authData.user) {
         // The trigger will create the profile, but we need to update it with full details
         // Small delay to let the trigger fire
+        const newFks = resolveProfileFKs(position, office, salaryGrade || '', 'employee');
         await new Promise((r) => setTimeout(r, 1000));
         await supabase
           .from('profiles')
@@ -215,6 +243,10 @@ export function EmployeesPage() {
             position_title: position,
             salary_grade: salaryGrade || null,
             role: 'employee',
+            position_id: newFks.position_id,
+            office_id: newFks.office_id,
+            salary_grade_id: newFks.salary_grade_id,
+            role_id: newFks.role_id,
           })
           .eq('id', authData.user.id);
 
@@ -269,6 +301,50 @@ export function EmployeesPage() {
     setBatchRows(prev => prev.filter((_, i) => i !== index));
   };
 
+  const createSingleEmployee = async (row: BatchRow, rowIndex: number): Promise<{ success: boolean; error?: { row: number; name: string; message: string } }> => {
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email: row.email,
+      password: row.password,
+      options: {
+        data: {
+          first_name: row.firstName,
+          last_name: row.lastName,
+          role: 'employee',
+        },
+      },
+    });
+
+    if (authError) {
+      return { success: false, error: { row: rowIndex + 1, name: `${row.firstName} ${row.lastName}`, message: authError.message } };
+    }
+
+    if (authData.user) {
+      // Wait for the auth trigger to create the profile row
+      const batchFks = resolveProfileFKs(row.position, batchOffice, row.salaryGrade || '', 'employee');
+      await new Promise((r) => setTimeout(r, 500));
+      await supabase
+        .from('profiles')
+        .update({
+          first_name: row.firstName,
+          middle_name: row.middleName || null,
+          last_name: row.lastName,
+          office_department: batchOffice,
+          position_title: row.position,
+          salary_grade: row.salaryGrade || null,
+          service_start_date: row.serviceStartDate || null,
+          role: 'employee',
+          position_id: batchFks.position_id,
+          office_id: batchFks.office_id,
+          salary_grade_id: batchFks.salary_grade_id,
+          role_id: batchFks.role_id,
+        })
+        .eq('id', authData.user.id);
+      return { success: true };
+    }
+
+    return { success: false, error: { row: rowIndex + 1, name: `${row.firstName} ${row.lastName}`, message: 'No user returned' } };
+  };
+
   const handleBatchSubmit = async (e: FormEvent) => {
     e.preventDefault();
     const validRows = batchRows.filter(r => r.email && r.password && r.firstName && r.lastName);
@@ -279,44 +355,22 @@ export function EmployeesPage() {
     const errors: BatchResult['errors'] = [];
     let created = 0;
 
-    for (let i = 0; i < validRows.length; i++) {
-      const row = validRows[i];
-      setBatchProgress(i + 1);
+    // Process in chunks of 5 concurrently to avoid rate limits
+    const CONCURRENCY = 5;
+    for (let i = 0; i < validRows.length; i += CONCURRENCY) {
+      const chunk = validRows.slice(i, i + CONCURRENCY);
+      const results = await Promise.all(
+        chunk.map((row, idx) => createSingleEmployee(row, i + idx))
+      );
 
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: row.email,
-        password: row.password,
-        options: {
-          data: {
-            first_name: row.firstName,
-            last_name: row.lastName,
-            role: 'employee',
-          },
-        },
-      });
-
-      if (authError) {
-        errors.push({ row: i + 1, name: `${row.firstName} ${row.lastName}`, message: authError.message });
-        continue;
+      for (const result of results) {
+        if (result.success) {
+          created++;
+        } else if (result.error) {
+          errors.push(result.error);
+        }
       }
-
-      if (authData.user) {
-        await new Promise((r) => setTimeout(r, 1000));
-        await supabase
-          .from('profiles')
-          .update({
-            first_name: row.firstName,
-            middle_name: row.middleName || null,
-            last_name: row.lastName,
-            office_department: batchOffice,
-            position_title: row.position,
-            salary_grade: row.salaryGrade || null,
-            service_start_date: row.serviceStartDate || null,
-            role: 'employee',
-          })
-          .eq('id', authData.user.id);
-        created++;
-      }
+      setBatchProgress(Math.min(i + CONCURRENCY, validRows.length));
     }
 
     setBatchSaving(false);
@@ -324,17 +378,30 @@ export function EmployeesPage() {
     fetchEmployees();
   };
 
-  const openView = async (emp: Profile) => {
+  const fetchViewApps = useCallback(async (employeeId: string, pg: number) => {
+    setLoadingApps(true);
+    const { data, count } = await supabase
+      .from('leave_applications')
+      .select('*, leave_type:leave_types(*)', { count: 'exact' })
+      .eq('employee_id', employeeId)
+      .order('created_at', { ascending: false })
+      .range(pg * PAGE_SIZE, (pg + 1) * PAGE_SIZE - 1);
+    setEmployeeApps(data ?? []);
+    setViewTotalCount(count ?? 0);
+    setLoadingApps(false);
+  }, []);
+
+  const openView = (emp: Profile) => {
     setViewEmployee(emp);
     setEmployeeApps([]);
-    setLoadingApps(true);
-    const { data } = await supabase
-      .from('leave_applications')
-      .select('*, leave_type:leave_types(*)')
-      .eq('employee_id', emp.id)
-      .order('created_at', { ascending: false });
-    setEmployeeApps(data ?? []);
-    setLoadingApps(false);
+    setViewPage(0);
+    setViewTotalCount(0);
+    fetchViewApps(emp.id, 0);
+  };
+
+  const handleViewPageChange = (pg: number) => {
+    setViewPage(pg);
+    if (viewEmployee) fetchViewApps(viewEmployee.id, pg);
   };
 
   const downloadPdf = async (appId: string) => {
@@ -580,25 +647,33 @@ export function EmployeesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Office/Department
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={office}
                     onChange={(e) => setOffice(e.target.value)}
                     required
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">Select Office</option>
+                    {refOffices.map((o) => (
+                      <option key={o.id} value={o.name}>{o.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Position Title
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={position}
                     onChange={(e) => setPosition(e.target.value)}
                     required
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">Select Position</option>
+                    {refPositions.map((p) => (
+                      <option key={p.id} value={p.title}>{p.title}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -607,13 +682,18 @@ export function EmployeesPage() {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Salary Grade
                   </label>
-                  <input
-                    type="text"
+                  <select
                     value={salaryGrade}
                     onChange={(e) => setSalaryGrade(e.target.value)}
-                    placeholder="e.g. SG-15"
                     className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+                  >
+                    <option value="">Select Salary Grade</option>
+                    {refSalaryGrades.map((r) => (
+                      <option key={r.id} value={r.salary_grade}>
+                        {r.salary_grade} - Step {r.step_increment} (₱{r.monthly_rate.toLocaleString()})
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -706,15 +786,18 @@ export function EmployeesPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">Office/Department</label>
-                      <input
-                        type="text"
+                      <select
                         value={batchOffice}
                         onChange={(e) => setBatchOffice(e.target.value)}
                         required
                         disabled={batchSaving}
-                        placeholder="e.g. Provincial Government of Antique"
                         className="w-full px-3 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-                      />
+                      >
+                        <option value="">Select Office</option>
+                        {refOffices.map((o) => (
+                          <option key={o.id} value={o.name}>{o.name}</option>
+                        ))}
+                      </select>
                     </div>
                   </div>
                 </div>
@@ -772,10 +855,20 @@ export function EmployeesPage() {
                             <input type="text" value={row.lastName} onChange={(e) => updateBatchRow(i, 'lastName', e.target.value)} disabled={batchSaving} placeholder="Last" className="w-full px-2 py-1.5 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100" />
                           </td>
                           <td className="py-1 pr-1">
-                            <input type="text" value={row.position} onChange={(e) => updateBatchRow(i, 'position', e.target.value)} disabled={batchSaving} placeholder="Position" className="w-full px-2 py-1.5 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100" />
+                            <select value={row.position} onChange={(e) => updateBatchRow(i, 'position', e.target.value)} disabled={batchSaving} className="w-full px-2 py-1.5 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100">
+                              <option value="">Select</option>
+                              {refPositions.map((p) => (
+                                <option key={p.id} value={p.title}>{p.title}</option>
+                              ))}
+                            </select>
                           </td>
                           <td className="py-1 pr-1">
-                            <input type="text" value={row.salaryGrade} onChange={(e) => updateBatchRow(i, 'salaryGrade', e.target.value)} disabled={batchSaving} placeholder="e.g. SG-15" className="w-full px-2 py-1.5 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100" />
+                            <select value={row.salaryGrade} onChange={(e) => updateBatchRow(i, 'salaryGrade', e.target.value)} disabled={batchSaving} className="w-full px-2 py-1.5 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100">
+                              <option value="">Select</option>
+                              {refSalaryGrades.map((r) => (
+                                <option key={r.id} value={r.salary_grade}>{r.salary_grade}</option>
+                              ))}
+                            </select>
                           </td>
                           <td className="py-1 pr-1">
                             <input type="date" value={row.serviceStartDate} onChange={(e) => updateBatchRow(i, 'serviceStartDate', e.target.value)} disabled={batchSaving} className="w-full px-2 py-1.5 border rounded text-sm outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100" />
@@ -921,6 +1014,7 @@ export function EmployeesPage() {
                   </tbody>
                 </table>
               )}
+              <Pagination page={viewPage} totalCount={viewTotalCount} pageSize={PAGE_SIZE} onPageChange={handleViewPageChange} />
             </div>
 
             {/* Footer */}
